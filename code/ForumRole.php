@@ -7,7 +7,8 @@
  *
  * @package forum
  */
-class ForumRole extends DataObjectDecorator {
+//class ForumRole extends DataObjectDecorator {
+class ForumRole extends DataExtension {
 
 	/**
 	 * Edit the given query object to support queries for this extension
@@ -46,7 +47,7 @@ class ForumRole extends DataObjectDecorator {
 	 * Return an map where the keys are db, has_one, etc, and the values are
 	 * additional fields/relations to be defined
 	 */
-	function extraStatics() {
+	function extraStatics($class = null, $extension = null) {
 		$fields = array(
 			'db' => array(
 				'ForumRank' => 'Varchar',
@@ -158,6 +159,9 @@ class ForumRole extends DataObjectDecorator {
 	function getForumFields($showIdentityURL = false, $addmode = false) {
 		$gravatarText = (DataObject::get_one("ForumHolder", "\"AllowGravatars\" = 1")) ? '<small>'. _t('ForumRole.CANGRAVATAR', 'If you use Gravatars then leave this blank') .'</small>' : "";
 
+		$avatarField = new UploadField("Avatar", _t('ForumRole.AVATAR','Avatar Image') .' '. $gravatarText);
+		$avatarField->allowedExtensions = array('jpg', 'gif', 'png');
+
 		$personalDetailsFields = new CompositeField(
 			new HeaderField("PersonalDetails", _t('ForumRole.PERSONAL','Personal Details')),
 	
@@ -169,10 +173,11 @@ class ForumRole extends DataObjectDecorator {
 			new CheckableOption("OccupationPublic", new TextField("Occupation", _t('ForumRole.OCCUPATION','Occupation')), true),
 			new CheckableOption('CompanyPublic', new TextField('Company', _t('ForumRole.COMPANY', 'Company')), true),
 			new CheckableOption('CityPublic', new TextField('City', _t('ForumRole.CITY', 'City')), true),
-			new CheckableOption("CountryPublic", new CountryDropdownField("Country", _t('ForumRole.COUNTRY','Country')), true),
+			new CheckableOption("CountryPublic", new ForumCountryDropdownField("Country", _t('ForumRole.COUNTRY','Country')), true),
 			new CheckableOption("EmailPublic", new EmailField("Email", _t('ForumRole.EMAIL','Email'))),
 			new ConfirmedPasswordField("Password", _t('ForumRole.PASSWORD','Password')),
-			new SimpleImageField("Avatar", _t('ForumRole.AVATAR','Upload avatar ') .' '. $gravatarText)
+			//new SimpleImageField("Avatar", _t('ForumRole.AVATAR','Upload avatar ') .' '. $gravatarText)
+			$avatarField
 		);
 		// Don't show 'forum rank' at registration
 		if(!$addmode) {
@@ -182,7 +187,8 @@ class ForumRole extends DataObjectDecorator {
 		}
 		$personalDetailsFields->setID('PersonalDetailsFields');
 		
-		$fieldset = new FieldSet(
+		//$fieldset = new FieldSet(
+		$fieldset = new FieldList(
 			$personalDetailsFields
 		);
 
@@ -233,7 +239,7 @@ class ForumRole extends DataObjectDecorator {
 		return $validator;
 	}
 
-	function updateCMSFields(FieldSet &$fields) {
+	function updateCMSFields(FieldList $fields) {
 		$allForums = DataObject::get('Forum');
 		$fields->removeByName('ModeratedForums');
 		$fields->addFieldToTab('Root.ModeratedForums', new CheckboxSetField('ModeratedForums', _t('ForumRole.MODERATEDFORUMS', 'Moderated forums'), ($allForums ? $allForums->map('ID', 'Title') : array())));

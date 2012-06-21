@@ -22,9 +22,10 @@ class ForumDatabaseSearch implements ForumSearchProvider {
 	public function getResults($forumHolderID, $query, $order, $offset = 0, $limit = 10) {
 		
 		// Search for authors
-		$SQL_queryParts = split(' +', trim($query));
+		//$SQL_queryParts = split(' +', trim($query));
+		$SQL_queryParts = explode('+', trim($query));
 		foreach($SQL_queryParts as $SQL_queryPart ) { 
-			$SQL_clauses[] = "\"FirstName\" LIKE '%$SQL_queryPart%' OR \"Surname\" LIKE '%$SQL_queryPart' OR \"Nickname\" LIKE '%$SQL_queryPart'";
+			$SQL_clauses[] = "FirstName LIKE '%$SQL_queryPart%' OR Surname LIKE '%$SQL_queryPart' OR Nickname LIKE '%$SQL_queryPart'";
 		}
 
 		$potentialAuthors = DataObject::get('Member', implode(" OR ", $SQL_clauses), '"ID" ASC');
@@ -36,27 +37,32 @@ class ForumDatabaseSearch implements ForumSearchProvider {
 				$SQL_potentialAuthorIDs[] = $potentialAuthor->ID;
 			}
 			$SQL_authorList = implode(", ", $SQL_potentialAuthorIDs);
-			$SQL_authorClause = "OR \"Post\".\"AuthorID\" IN ($SQL_authorList)";
+			$SQL_authorClause = "OR Post.AuthorID IN ($SQL_authorList)";
 		}
 		
 		// Work out what sorting method
 		switch($order) {
 			case 'date':
-				$sort = "\"Post\".\"Created\" DESC";
+				$sort = "Post.Created DESC";
 				break;
 			case 'title':
-				$sort = "\"ForumThread\".\"Title\" ASC";
+				$sort = "ForumThread.Title ASC";
 				break;
 			default:
-				$sort = "\"RelevancyScore\" DESC";
+				$sort = "RelevancyScore DESC";
 				break;
 		}
-
+		/*
 		$baseSelect = "SELECT \"Post\".\"ID\", \"Post\".\"Created\", \"Post\".\"LastEdited\", \"Post\".\"ClassName\", \"ForumThread\".\"Title\", \"Post\".\"Content\", \"Post\".\"ThreadID\", \"Post\".\"AuthorID\", \"ForumThread\".\"ForumID\"";
 		$baseFrom = "FROM \"Post\"
 			JOIN \"ForumThread\" ON \"Post\".\"ThreadID\" = \"ForumThread\".\"ID\"
 			JOIN \"" . ForumHolder::baseForumTable() . "\" \"ForumPage\" ON \"ForumThread\".\"ForumID\"=\"ForumPage\".\"ID\"";
+		*/
+
+		$baseSelect = "SELECT Post.ID, Post.Created, Post.LastEdited, Post.ClassName, ForumThread.Title, Post.Content, Post.ThreadID, Post.AuthorID, ForumThread.ForumID";
+		$baseFrom = "FROM Post JOIN ForumThread ON Post.ThreadID = ForumThread.ID JOIN {ForumHolder::baseForumTable()} ForumPage ON ForumThread.ForumID=ForumPage.ID";
 		
+
 		// each database engine does its own thing 
 		switch(DB::getConn()->getDatabaseServer()) {
 			case 'postgresql':
@@ -73,8 +79,8 @@ class ForumDatabaseSearch implements ForumSearchProvider {
 					$baseSelect
 					$baseFrom
 					WHERE
-						(CONTAINS(\"ForumThread\".\"Title\", '$query') OR CONTAINS(\"Post\".\"Content\", '$query')
-						AND \"ForumPage\".\"ParentID\"='{$forumHolderID}'";
+						(CONTAINS(ForumThread.Title, '$query') OR CONTAINS(Post.Content, '$query')
+						AND ForumPage.ParentID='{$forumHolderID}'";
 						
 				// @todo fix this to use MSSQL's version of limit/offsetB
 				$limitString = false;
@@ -83,12 +89,12 @@ class ForumDatabaseSearch implements ForumSearchProvider {
 			default:
 				$queryString = "
 					$baseSelect,
-					MATCH (\"Post\".\"Content\") AGAINST ('$query') AS RelevancyScore
+					MATCH (Post.Content) AGAINST ('$query') AS RelevancyScore
 					$baseFrom
 					WHERE
-						MATCH (\"ForumThread\".\"Title\", \"Post\".\"Content\") AGAINST ('$query' IN BOOLEAN MODE)
+						MATCH (ForumThread.Title, Post.Content) AGAINST ('$query' IN BOOLEAN MODE)
 						$SQL_authorClause
-						AND \"ForumPage\".\"ParentID\"='{$forumHolderID}'
+						AND ForumPage.ParentID='{$forumHolderID}'
 					ORDER BY $sort";
 
 				$limitString = " LIMIT $offset, $limit;";

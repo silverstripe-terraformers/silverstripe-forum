@@ -150,23 +150,26 @@ class Forum extends Page {
 		parent::requireDefaultRecords();
 
 		$code = "ACCESS_FORUM";
-		if(!$forumGroup = DataObject::get_one("Group", "\"Group\".\"Code\" = 'forum-members'")) {
+		if(!$forumGroup = Group::get()->filter('Code', 'forum-members')->first()) {
 			$group = new Group();
 			$group->Code = 'forum-members';
 			$group->Title = "Forum Members";
 			$group->write();
 
 			Permission::grant( $group->ID, $code );
-			DB::alteration_message(_t('Forum.GROUPCREATED','Forum Members group created'),"created"); 
-		} else if(DB::query("SELECT * FROM \"Permission\" WHERE \"GroupID\" = '$forumGroup->ID' AND \"Code\" LIKE '$code'")->numRecords() == 0 ) {
+			DB::alteration_message(_t('Forum.GROUPCREATED','Forum Members group created'),'created'); 
+		} 
+		else if(DataList::create("Permission")->filter(array('GroupID' => $forumGroup->ID, 'Code' => $code))->count() == 0 ) {			
 			Permission::grant($forumGroup->ID, $code);
 		}
-		if(!$category = DataObject::get_one("ForumCategory")) {
+
+		if(!$category = ForumCategory::get()) {
 			$category = new ForumCategory();
 			$category->Title = _t('Forum.DEFAULTCATEGORY', 'General');
 			$category->write();
 		}
-		if(!DataObject::get_one("ForumHolder")) {
+
+		if(!ForumHolder::get()->first()) {
 			$forumholder = new ForumHolder();
 			$forumholder->Title = "Forums";
 			$forumholder->URLSegment = "forums";
@@ -228,6 +231,15 @@ class Forum extends Page {
 			new TreeDropdownField('UploadsFolderID', _t('Forum.UPLOADSFOLDER', 'Uploads folder'), 'Folder')
 		));
 		
+		//$config = GridFieldConfig::create();
+		//$config->addComponent(new GridFieldFilterHeader());
+		$gridField = new GridField('Category', 'Forum Category', DataObject::get("ForumCategory"));
+		
+
+		//$GridFieldConfig_RelationEditor
+		//HasManyComplexTableField->__construct is deprecated. Use GridField with GridFieldConfig_RelationEditor
+		$fields->addFieldToTab("Root.Category", $gridField);
+		/*
 		$fields->addFieldToTab("Root.Category",
 			new HasOneCTFWithDefaults(
 				$this,
@@ -243,11 +255,12 @@ class Forum extends Page {
 				array("ForumHolderID" => $this->ParentID)
 			)
 		);
+		*/
 
 		// TagField comes in it's own module.
 		// If it's installed, use it to select moderators for this forum
 		if(class_exists('TagField')) {
-			$fields->addFieldToTab('Root.Content.Moderators',
+			$fields->addFieldToTab('Root.Moderators',
 				$moderatorsField = new TagField(
 					'Moderators',
 					_t('MODERATORS', 'Moderators for this forum'),
@@ -261,7 +274,13 @@ class Forum extends Page {
 			);
 			$moderatorsField->deleteUnusedTags = false;
 		} else {
-			$fields->addFieldToTab('Root.Content.Moderators', new LiteralField('ModeratorWarning', '<p>Please install the <a href="http://silverstripe.org/tag-field-module/" target="_blank">TagField module</a> to manage moderators for this forum.</p>'));
+			$fields->addFieldToTab(
+					'Root.Moderators', 
+					new LiteralField(
+							'ModeratorWarning', 
+							'<p>Please install the <a href="http://silverstripe.org/tag-field-module/" target="_blank">TagField module</a> to manage moderators for this forum.</p>'
+						)
+					);
 		}
 
 		return $fields;
@@ -278,7 +297,7 @@ class Forum extends Page {
 	 *                         displayed
 	 * @return string HTML code to display breadcrumbs
 	 */
-	public function Breadcrumbs($maxDepth = null,$unlinked = false, $stopAtPageType = false,$showHidden = false) {
+	public function Breadcrumbs($maxDepth = null, $unlinked = false, $stopAtPageType = false, $showHidden = false) {
 		$page = $this;
 		$nonPageParts = array();
 		$parts = array();
@@ -286,28 +305,24 @@ class Forum extends Page {
 		$controller = Controller::curr();
 		$params = $controller->getURLParams();
 
-		$SQL_id = $params['ID'];
-		if(is_numeric($SQL_id)) {
-			$topic = DataObject::get_by_id("ForumThread", $SQL_id);
-
-			if($topic) {
+		$forumThreadID = $params['ID'];
+		if(is_numeric($forumThreadID)) {
+			if($topic = ForumThread::get()->byID($forumThreadID)) {
 				$nonPageParts[] = Convert::raw2xml($topic->getTitle());
 			}
 		}
 
 		while($page && (!$maxDepth || sizeof($parts) < $maxDepth)) {
 			if($showHidden || $page->ShowInMenus || ($page->ID == $this->ID)) {
-				if($page->URLSegment == 'home')
-					$hasHome = true;
+				if($page->URLSegment == 'home') $hasHome = true;
 
 				if($nonPageParts) {
-					$parts[] = "<a href=\"" . $page->Link() . "\">" .
-						Convert::raw2xml($page->Title) . "</a>";
-				} else {
-					$parts[] = (($page->ID == $this->ID) || $unlinked)
-						? Convert::raw2xml($page->Title)
-						: ("<a href=\"" . $page->Link() . "\">" .
-							 Convert::raw2xml($page->Title) . "</a>");
+					$parts[] = '<a href="' . $page->Link() . '">' . Convert::raw2xml($page->Title) . '</a>';
+				} 
+				else {
+					$parts[] = (($page->ID == $this->ID) || $unlinked) 
+							? Convert::raw2xml($page->Title) 
+							: '<a href="' . $page->Link() . '">' . Convert::raw2xml($page->Title) . '</a>';
 				}
 			}
 
@@ -335,7 +350,7 @@ class Forum extends Page {
 	 * @return Post
 	 */
 	function getLatestPost() {
-		return DataObject::get_one('Post', "\"Post\".\"ForumID\" = '$this->ID'", true, "\"Post\".\"ID\" DESC");
+		return DataList::create('Post')->filter('ForumID', $this->ID)->sort('Post.ID DESC')->first();
 	}
 
 	/**
@@ -344,41 +359,33 @@ class Forum extends Page {
 	 * @return int Returns the number of topics (threads)
 	 */
 	function getNumTopics() {
-		return (int)DB::query("
-			SELECT count(\"ID\") 
-			FROM \"ForumThread\" 
-			WHERE \"ForumID\" = $this->ID")->value();
+		return ForumThread::get()->filter('ForumID', $this->ID)->count();
 	}
 
 	/**
 	 * Get the number of total posts
 	 *
-	 * @return int Returns the number of posts
+	 * @return int
 	 */
 	function getNumPosts() {
-		return (int)DB::query("
-			SELECT COUNT(*) 
-			FROM \"Post\" 
-			WHERE \"Post\".\"ForumID\" = $this->ID")->value();
+		return Post::get()->filter('ForumID', $this->ID)->count();
 	}
 
 	/**
-	 * Get the number of distinct authors
+	 * Get the number of distinct Authors
 	 *
-	 * @return int Returns the number of distinct authors
+	 * @return int
 	 */
 	function getNumAuthors() {
-		return DB::query("
-			SELECT COUNT(DISTINCT \"AuthorID\") 
-			FROM \"Post\" 
-			WHERE \"Post\".\"ForumID\" = $this->ID")->value();
+		return Post::getDistinct('AuthorID')->filter('ForumID', $this->ID)->count();
 	}
 
 	/**
-	 * Returns the topics (first posting of each thread) for this forum
-	 * @return DataObjectSet
+	 * Returns the Topics (the first Post of each Thread) for this Forum
+	 * @return DataList
 	 */
 	function getTopics() {
+/*
 		if(Member::currentUser()==$this->Moderator() && is_numeric($this->ID)) {
 			$statusFilter = "(\"PostList\".\"Status\" IN ('Moderated', 'Awaiting')";
 		} else {
@@ -395,13 +402,18 @@ class Forum extends Page {
 			"INNER JOIN \"Post\" AS \"PostList\" ON \"PostList\".\"ThreadID\" = \"ForumThread\".\"ID\"", 
 			$limit
 		);
+*/
+		$topics = DataList::create('ForumThread')->filter(array("ForumID"=>$this->ID, 'IsGlobalSticky'=>0, 'IsSticky'=>0));
+		return $topics;
 	}
 	
-	/**
-	 * Return the Sticky Threads
-	 * @return DataObjectSet
+	/*
+	 * Returns the Sticky Threads
+	 * @param boolean $include_global Include Global Sticky Threads in the results (default: true)
+	 * @return DataList
 	 */
-	function getStickyTopics($include_global = true) {
+	 function getStickyTopics($include_global = true) {
+/*
 		$standard = DataObject::get(
 			"ForumThread", 
 			"\"ForumThread\".\"ForumID\" = $this->ID AND \"ForumThread\".\"IsSticky\" = 1", 
@@ -433,6 +445,11 @@ class Forum extends Page {
 		
 		if($standard->count()) $standard->sort('PostList.Created');
 		return $standard;
+*/
+		$stickTopics = DataList::create('ForumThread')->filter(array('ForumID'=>$this->ID, 'IsSticky'=>1));
+		if($include_global) $stickTopics->filter('IsGlobalSticky', 1);
+
+		return $stickTopics;
 	}
 }
 
@@ -463,13 +480,22 @@ class Forum_Controller extends Page_Controller {
 	
 	function init() {
 		parent::init();
-		if(Director::redirected_to()) return;
+		if($this->redirectedTo()) return;
+
+		Requirements::javascript(THIRDPARTY_DIR . "/jquery/jquery.js"); 
+		Requirements::javascript("forum/javascript/forum.js");
+		Requirements::javascript("forum/javascript/jquery.MultiFile.js");
+
+		Requirements::themedCSS('forum','forum','all');
+
+		RSSFeed::linkToFeed($this->Parent()->Link("rss/forum/$this->ID"), sprintf(_t('Forum.RSSFORUM',"Posts to the '%s' forum"),$this->Title)); 
+	 	RSSFeed::linkToFeed($this->Parent()->Link("rss"), _t('Forum.RSSFORUMS','Posts to all forums'));
 
  	  	if(!$this->canView()) {
  		  	$messageSet = array(
 				'default' => _t('Forum.LOGINDEFAULT','Enter your email address and password to view this forum.'),
-				'alreadyLoggedIn' => _t('Forum.LOGINALREADY','I\'m sorry, but you can\'t access this forum until you\'ve logged in.  If you want to log in as someone else, do so below'),
-				'logInAgain' => _t('Forum.LOGINAGAIN','You have been logged out of the forums.  If you would like to log in again, enter a username and password below.')
+				'alreadyLoggedIn' => _t('Forum.LOGINALREADY','I&rsquo;m sorry, but you can&rsquo;t access this forum until you&rsquo;ve logged in. If you want to log in as someone else, do so below'),
+				'logInAgain' => _t('Forum.LOGINAGAIN','You have been logged out of the forums. If you would like to log in again, enter a username and password below.')
 			);
 
 			Security::permissionFailure($this, $messageSet);
@@ -481,15 +507,6 @@ class Forum_Controller extends Page_Controller {
  			$member->LastViewed = date("Y-m-d H:i:s");
  			$member->write();
  		}
-		
-		Requirements::javascript(THIRDPARTY_DIR . "/jquery/jquery.js"); 
-		Requirements::javascript("forum/javascript/forum.js");
-		Requirements::javascript("forum/javascript/jquery.MultiFile.js");
-
-		Requirements::themedCSS('Forum');
-
-		RSSFeed::linkToFeed($this->Parent()->Link("rss/forum/$this->ID"), sprintf(_t('Forum.RSSFORUM',"Posts to the '%s' forum"),$this->Title)); 
-	 	RSSFeed::linkToFeed($this->Parent()->Link("rss"), _t('Forum.RSSFORUMS','Posts to all forums'));
 	 	
 		// Set the back url
 		if(isset($_SERVER['REQUEST_URI'])) {
@@ -576,16 +593,13 @@ class Forum_Controller extends Page_Controller {
 		if(!isset($this->urlParams['ID'])) return $this->httpError(400);
 		if(!$this->canModerate()) return $this->httpError(403);
 
-		$post = DataObject::get_by_id('Post', $this->urlParams['ID']);
-		
-		if($post) {	
+		$post = Post::get()->byID($this->urlParams['ID']);
+		if($post->count()) {	
 			// send spam feedback if needed
 			if(class_exists('SpamProtectorManager')) {
 				SpamProtectorManager::send_feedback($post, 'spam');
 			}
 			
-			$postID = $post->ID;
-
 			// post was the start of a thread, Delete the whole thing
 			if($post->isFirstPost()) $post->Thread()->delete();
 
@@ -595,7 +609,7 @@ class Forum_Controller extends Page_Controller {
 			// Log deletion event
 			SS_Log::log(sprintf(
 				'Marked post #%d as spam, by moderator %s (#%d)', 
-				$postID,
+				$post->ID,
 				$currentUser->Email,
 				$currentUser->ID
 			), SS_Log::NOTICE);
@@ -621,25 +635,31 @@ class Forum_Controller extends Page_Controller {
 
 	/**
 	 * Get posts to display. This method assumes an URL parameter "ID" which contains the thread ID.
-	 *
+	 * @param string sortDirection The sort order direction, either ASC for ascending (default) or DESC for descending 
 	 * @return DataObjectSet Posts
 	 */
-	function Posts($order = "ASC") {
-		$SQL_id = Convert::raw2sql($this->urlParams['ID']);
-		
+	function Posts($sortDirection = "ASC") {
 		$numPerPage = Forum::$posts_per_page;
 
 		if(isset($_GET['showPost']) && !isset($_GET['start'])) {
-			$allIDs = DB::query("SELECT \"ID\" FROM \"Post\" WHERE \"ThreadID\" = '$SQL_id' ORDER BY \"Created\"")->column();
-			if($allIDs) {
-				$foundPos = array_search($_GET['showPost'], $allIDs);
+			//$allIDs = DB::query("SELECT \"ID\" FROM \"Post\" WHERE \"ThreadID\" = '$SQL_id' ORDER BY \"Created\"")->column();
+			$postIDList = Post::get()
+					->select('ID')
+					->filter('ThreadID', Convert::raw2sql($this->urlParams['ID']))
+					->sort('Created ' . $sortDirection);
+			if($postIDList) {
+				$foundPos = array_search($_GET['showPost'], $postIDList);
 				$_GET['start'] = floor($foundPos / $numPerPage) * $numPerPage;
 			}
 		}
 
 		if(!isset($_GET['start'])) $_GET['start'] = 0;
 
-		return DataObject::get("Post", "\"ThreadID\" = '$SQL_id'", "\"Created\" $order" , "", (int)$_GET['start'] . ", $numPerPage");
+		//return DataObject::get("Post", "\"ThreadID\" = '$SQL_id'", "\"Created\" $order" , "", (int)$_GET['start'] . ", $numPerPage");
+		return Post::get()
+				->filter('ThreadID', Convert::raw2sql($this->urlParams['ID']))
+				->sort('Created ' . $sortDirection)
+				->limit((int)$_GET['start'], $numPerPage);
 	}
 
 	/**
@@ -667,7 +687,9 @@ class Forum_Controller extends Page_Controller {
 		// Check permissions
 		$messageSet = array(
 			'default' => _t('Forum.LOGINTOPOST','You\'ll need to login before you can post to that forum. Please do so below.'),
-			'alreadyLoggedIn' => _t('Forum.LOGINTOPOSTLOGGEDIN','I\'m sorry, but you can\'t post to this forum until you\'ve logged in.  If you want to log in as someone else, do so below. If you\'re logged in and you still can\'t post, you don\'t have the correct permissions to post.'),
+			'alreadyLoggedIn' => _t('Forum.LOGINTOPOSTLOGGEDIN',
+				 'I\'m sorry, but you can\'t post to this forum until you\'ve logged in.'
+			  	.'If you want to log in as someone else, do so below. If you\'re logged in and you still can\'t post, you don\'t have the correct permissions to post.'),
 			'logInAgain' => _t('Forum.LOGINTOPOSTAGAIN','You have been logged out of the forums.  If you would like to log in again to post, enter a username and password below.'),
 		);
 		
@@ -688,16 +710,21 @@ class Forum_Controller extends Page_Controller {
  			Security::permissionFailure($this, $messageSet);
 			return false;			
 		}
-		
-		$fields = new FieldSet(
+
+		// @todo resolve compile time error: Fatal error: Using $this when not in object context in /Users/mparkhill/Sites/silverstripe/framework/view/ViewableData.php on line 443
+		//$forumBBCodeHint = $this->renderWith('Forum_BBCodeHint');
+		$forumBBCodeHint = '[forumBBCodeHint]';
+
+		//$fields = new FieldSet(
+		$fields = new FieldList(
 			($post && $post->isFirstPost() || !$thread) ? new TextField("Title", _t('Forum.FORUMTHREADTITLE', 'Title')) : new ReadonlyField('Title',  _t('Forum.FORUMTHREADTITLE', 'Title'), 'Re:'. $thread->Title),
 			new TextareaField("Content", _t('Forum.FORUMREPLYCONTENT', 'Content')),
 			new LiteralField(
 				"BBCodeHelper", 
 				"<div class=\"BBCodeHint\">[ <a href=\"#BBTagsHolder\" id=\"BBCodeHint\">" . 
 				_t('Forum.BBCODEHINT','View Formatting Help') . 
-				"</a> ]</div>" .
-				$this->renderWith('Forum_BBCodeHint')
+				"</a> ]</div>" . 
+				$forumBBCodeHint
 			),
 			new CheckboxField("TopicSubscription", 
 				_t('Forum.SUBSCRIBETOPIC','Subscribe to this topic (Receive email notifications when a new reply is added)'), 
@@ -720,7 +747,9 @@ class Forum_Controller extends Page_Controller {
 				$link = $this->Link();
 				
 				foreach($attachmentList as $attachment) {
-					$attachments .= "<li class='attachment-$attachment->ID'>$attachment->Name [<a href='{$link}deleteattachment/$attachment->ID' rel='$attachment->ID' class='deleteAttachment'>". _t('Forum.REMOVE','remove') ."</a>]</li>";
+					$attachments .= "<li class='attachment-$attachment->ID'>$attachment->Name [<a href='{$link}deleteattachment/$attachment->ID' rel='$attachment->ID' class='deleteAttachment'>"
+							. _t('Forum.REMOVE','remove') 
+							. "</a>]</li>";
 				}
 				$attachments .= "</ul></div>";
 			
@@ -728,7 +757,8 @@ class Forum_Controller extends Page_Controller {
 			}
 		}
 		
-		$actions = 	new FieldSet(
+		//$actions = new FieldSet(
+		$actions = new FieldList(
 			new FormAction("doPostMessageForm", _t('Forum.REPLYFORMPOST', 'Post'))
 		);
 
@@ -822,7 +852,8 @@ class Forum_Controller extends Page_Controller {
 		
 		// Upload and Save all files attached to the field
 		// Attachment will always be blank, If they had an image it will be at least in Attachment-0
-		$attachments = new DataObjectSet();
+		//$attachments = new DataObjectSet();
+		$attachments = new ArrayList();
 		
 		if(!empty($data['Attachment-0']) && !empty($data['Attachment-0']['tmp_name'])) {
 			$id = 0;
@@ -981,7 +1012,7 @@ class Forum_Controller extends Page_Controller {
 	 * @return string URL for the reply action
 	 */
 	function ReplyLink() {
-		return $this->Link() . "reply/" . $this->urlParams['ID'];
+		return $this->Link() . 'reply/' . $this->urlParams['ID'];
 	}
 
 	/**
@@ -993,26 +1024,32 @@ class Forum_Controller extends Page_Controller {
 	 */
  	function show() {
 		$title = Convert::raw2xml($this->Title);
-		
+
 		if($thread = $this->getForumThread()) {
+
 			$thread->incNumViews();
 
 			$posts = sprintf(_t('Forum.POSTTOTOPIC',"Posts to the %s topic"), $thread->Title);
-			
+
 			RSSFeed::linkToFeed($this->Link("rss") . '/thread/' . (int) $this->urlParams['ID'], $posts);
-				
+
 			$title = Convert::raw2xml($thread->Title) . ' &raquo; ' . $title;
-			
+			//$title = Convert::raw2xml($thread->Title) . ' - ' . $title;
+		
+			$field = DBField::create_field('HTMLText',$title);
+
 			return array(
 				'Thread' => $thread,
-				'Title' => DBField::create('HTMLText',$title)
+				'Title' => $field
+				//'Title' => DBField::create('HTMLText',$title)
 			);
 		}
 		else {
 			// if redirecting post ids to thread id is enabled then we need
 			// to check to see if this matches a post and if it does redirect
 			if(Forum::$redirect_post_urls_to_thread && isset($this->urlParams['ID']) && is_numeric($this->urlParams['ID'])) {
-				if($post = DataObject::get_by_id('Post', $this->urlParams['ID'])) {
+				//if($post = DataObject::get_by_id('Post', $this->urlParams['ID'])) {
+				if($post = DataObject::create('Post')->byID($this->urlParams['ID'])) {
 					return $this->redirect($post->Link(), 301);
 				}
 			}
@@ -1027,10 +1064,12 @@ class Forum_Controller extends Page_Controller {
 	 * @return array Returns an array to render the start topic page
 	 */
 	function starttopic() {
-		return array(
-			'Subtitle' => DBField::create('HTMLText', _t('Forum.NEWTOPIC','Start a new topic')),
-			'Abstract' => DBField::create('HTMLText', DataObject::get_one("ForumHolder")->ForumAbstract)
+		$topic = array(
+			'Subtitle' => DBField::create_field('HTMLText', _t('Forum.NEWTOPIC','Start a new topic')),
+			'Abstract' => DBField::create_field('HTMLText', DataObject::get_one("ForumHolder")->ForumAbstract)
 		);
+		//print('<pre>');print_r($topic);die;
+		return $topic;
 	}
 
 	/**
@@ -1163,18 +1202,20 @@ class Forum_Controller extends Page_Controller {
 
 		$id = (isset($this->urlParams['ID'])) ? $this->urlParams['ID'] : false;
 		
-		$fields = new FieldSet(
+		//$fields = new FieldSet(
+		$fields = new FieldList(
 			new CheckboxField('IsSticky', _t('Forum.ISSTICKYTHREAD','Is this a Sticky Thread?')),
 			new CheckboxField('IsGlobalSticky', _t('Forum.ISGLOBALSTICKY','Is this a Global Sticky (shown on all forums)')),
 			new CheckboxField('IsReadOnly', _t('Forum.ISREADONLYTHREAD','Is this a Read only Thread?')),
 			new HiddenField("ID", "Thread")
 		);
 		
-		if($forums = DataObject::get("Forum")) {
-			$fields->push(new DropdownField("ForumID", _t('Forum.CHANGETHREADFORUM',"Change Thread Forum"), $forums->toDropDownMap('ID', 'Title', 'Select New Category:')), '', null, 'Select New Location:');
+		//if($forums = DataObject::get("Forum")) {
+		if($forums = Forum::get()) {
+			$fields->push(new DropdownField("ForumID", _t('Forum.CHANGETHREADFORUM',"Change Thread Forum"), $forums->map('ID', 'Title', 'Select New Category:')), '', null, 'Select New Location:');
 		}
 	
-		$actions = new FieldSet(
+		$actions = new FieldList(
 			new FormAction('doAdminFormFeatures', _t('Forum.SAVE', 'Save'))
 		);
 		
@@ -1183,7 +1224,8 @@ class Forum_Controller extends Page_Controller {
 		// need this id wrapper since the form method is called on save as 
 		// well and needs to return a valid form object
 		if($id) {
-			$thread = DataObject::get_by_id('ForumThread', $id);
+			//$thread = DataObject::get_by_id('ForumThread', $id);
+			$thread = ForumThread::get()->byID($id);
 			$form->loadDataFrom($thread);
 		}
 
@@ -1196,7 +1238,7 @@ class Forum_Controller extends Page_Controller {
 	 */
 	function doAdminFormFeatures($data, $form) {
 		if(isset($data['ID'])) {
-			$thread = DataObject::get_by_id('ForumThread', $data['ID']);
+			$thread = ForumThread::get()->byID($data['ID']);//DataObject::get_by_id('ForumThread', $data['ID']);
 
 			if($thread) {
 				if (!$thread->canModerate()) {

@@ -73,7 +73,7 @@ class ForumHolder extends Page {
 	
 	function getCMSFields() {
 		$fields = parent::getCMSFields();
-		$fields->addFieldsToTab("Root.Content.Messages", array(
+		$fields->addFieldsToTab("Root.Messages", array(
 			new TextField("HolderSubtitle","Forum Holder Subtitle"),
 			new HTMLEditorField("HolderAbstract","Forum Holder Abstract"),
 			new TextField("ProfileSubtitle","Member Profile Subtitle"),
@@ -83,12 +83,12 @@ class ForumHolder extends Page {
 			new HTMLEditorField("ProfileModify","Create message after modifing forum member"),
 			new HTMLEditorField("ProfileAdd","Create message after adding forum member")
 		));
-		$fields->addFieldsToTab("Root.Content.Settings", array(
+		$fields->addFieldsToTab("Root.Settings", array(
 			new CheckboxField("DisplaySignatures", "Display Member Signatures?"),
 			new CheckboxField("ShowInCategories", "Show Forums In Categories?"),
 			new CheckboxField("AllowGravatars", "Allow <a href='http://www.gravatar.com/' target='_blank'>Gravatars</a>?")
 		));
-		$fields->addFieldsToTab("Root.Content.LanguageFilter", array(
+		$fields->addFieldsToTab("Root.LanguageFilter", array(
 			new TextField("ForbiddenWords", "Forbidden words (comma separated)"),
 			new LiteralField("FWLabel","These words will be replaced by an asterisk")
 		));
@@ -133,13 +133,13 @@ class ForumHolder extends Page {
 	public function requireDefaultRecords() {
 		parent::requireDefaultRecords();
 
-		if (!$cats = DataObject::get("ForumCategory", '"ForumCategory"."ForumHolderID" = 0')) return;
+		if(!$forumCategories = ForumCategory::get()->filter('ForumHolderID', 0)) return;
 
-		if (!$holder = DataObject::get_one("ForumHolder")) return;
+		if(!$forumHolder = ForumHolder::get()->first()) return;
 
-		foreach ($cats as $c) {
-			$c->ForumHolderID = $holder->ID;
-			$c->write();
+		foreach($forumCategories as $forumCategory) {
+			$forumCategory->ForumHolderID = $forumHolder->ID;
+			$forumCategory->write();
 		}
 	}
 	
@@ -148,15 +148,15 @@ class ForumHolder extends Page {
 	 * a breadcrumb to get back to the ForumHolder page.
 	 * @return string
 	 */
-	function Breadcrumbs() {
+	public function Breadcrumbs($maxDepth = 20, $unlinked = false, $stopAtPageType = false, $showHidden = false) {
 		if(isset($this->urlParams['Action'])) {
 			switch($this->urlParams['Action']) {
 				case 'search':
-					return "<a href=\"{$this->Link()}\">{$this->Title}</a> &raquo; " . _t('SEARCHBREADCRUMB', 'Search');
+					return '<a href="' . $this->Link() . '">' . $this->Title . '</a> &raquo; ' . _t('SEARCHBREADCRUMB', 'Search');
 				case 'memberlist':
-					return "<a href=\"{$this->Link()}\">{$this->Title}</a> &raquo; " . _t('MEMBERLIST', 'Member List');				
+					return '<a href="' . $this->Link() . '">' . $this->Title . '</a> &raquo; ' . _t('MEMBERLIST', 'Member List');				
 				case 'popularthreads':
-					return "<a href=\"{$this->Link()}\">{$this->Title}</a> &raquo; " . _t('MOSTPOPULARTHREADS', 'Most popular threads');
+					return '<a href="' . $this->Link() . '">' . $this->Title . '</a> &raquo; ' . _t('MOSTPOPULARTHREADS', 'Most popular threads');
 			}
 		}
 	}
@@ -173,7 +173,7 @@ class ForumHolder extends Page {
 			FROM \"Post\" 
 			JOIN \"ForumThread\" ON \"Post\".\"ThreadID\" = \"ForumThread\".\"ID\"
 			JOIN \"" . ForumHolder::baseForumTable() . "\" AS \"ForumPage\" ON \"ForumThread\".\"ForumID\" = \"ForumPage\".\"ID\" 
-			WHERE \"ForumPage\".\"ParentID\"='{$this->ID}'")->value(); 
+			WHERE \"ForumPage\".\"ParentID\" = '" . $this->ID . "'")->value(); 
 	}
 
 
@@ -187,7 +187,7 @@ class ForumHolder extends Page {
 			SELECT COUNT(\"ForumThread\".\"ID\") 
 			FROM \"ForumThread\" 
 			JOIN \"" . ForumHolder::baseForumTable() . "\" AS \"ForumPage\" ON \"ForumThread\".\"ForumID\" = \"ForumPage\".\"ID\"
-			WHERE \"ForumPage\".\"ParentID\"='{$this->ID}'")->value(); 
+			WHERE \"ForumPage\".\"ParentID\" = '" . $this->ID . "'")->value(); 
 	}
 
 
@@ -202,37 +202,44 @@ class ForumHolder extends Page {
 			FROM \"Post\" 
 			JOIN \"ForumThread\" ON \"Post\".\"ThreadID\" = \"ForumThread\".\"ID\"
 			JOIN \"" . ForumHolder::baseForumTable() . "\" AS \"ForumPage\" ON \"ForumThread\".\"ForumID\"=\"ForumPage\".\"ID\" 
-			AND \"ForumPage\".\"ParentID\"='{$this->ID}'")->value();
+			AND \"ForumPage\".\"ParentID\" = '" . $this->ID . "'")->value(); 		
 	}
 	
 	/**
 	 * Get a list of currently online users (last 15 minutes)
 	 * that belong to the "forum-members" code {@link Group}.
 	 * 
-	 * @return DataObjectSet of {@link Member} objects
+	 * @return DataList of {@link Member} objects
 	 */
 	function CurrentlyOnline() {
-		$filter = '';
-		
-		if($forumGroup = DataObject::get_one('Group', "\"Code\" = 'forum-members'")) {
-			$filter = "\"GroupID\" = '". $forumGroup->ID ."' ";
-		}
-		if($adminGroup = DataObject::get_one('Group', "(\"Code\" = 'administrators' OR \"Code\" = 'Administrators')")) {
-			$filter .= ($filter) ? "OR \"GroupID\" = '". $adminGroup->ID ."'" : "\"GroupID\" = '". $adminGroup->ID ."'";
+
+		$onlineUsers = Member::get()
+				->leftJoin('Group_Members', 'Member.ID = Group_Members.MemberID')
+				->sort('Member.FirstName, Member.Surname');
+
+		$groupIDs = array();
+
+		if($adminGroup = Group::get()->filter('Code', array('administrators', 'Administrators'))->first()) {
+			$groupIDs[] = $adminGroup->ID;
 		}
 
-		if(method_exists(DB::getConn(), 'datetimeIntervalClause')) {
-			$timeconstrain = "\"LastVisited\" > " . DB::getConn()->datetimeIntervalClause('now', '-15 MINUTE');
-		} else {
-			$timeconstrain = "\"LastVisited\" > NOW() - INTERVAL 15 MINUTE";
+		if($forumGroup = Group::get()->filter('Code', 'forum-members')->first()) {
+			$groupIDs[] = $forumGroup->ID;
 		}
-		
-		return DataObject::get(
-			'Member',
-			$timeconstrain . " AND ($filter)",
-			"\"FirstName\", \"Surname\"",
-			"LEFT JOIN \"Group_Members\" ON \"Member\".\"ID\" = \"Group_Members\".\"MemberID\""
-		);
+
+		$onlineUsers->filter('GroupID', $groupIDs);
+
+/*
+		if(method_exists(DB::getConn(), 'datetimeIntervalClause')) {
+			//$timeconstrain = "\"LastVisited\" > " . DB::getConn()->datetimeIntervalClause('now', '-15 MINUTE');
+			$onlineUsers->filter("\"LastVisited\":GreaterThan", DB::getConn()->datetimeIntervalClause('NOW', '-15 MINUTE'));
+		} else {
+			//$timeconstrain = "\"LastVisited\" > NOW() - INTERVAL 15 MINUTE";
+			$onlineUsers->filter('\"LastVisited\":GreaterThan', 'NOW() - INTERVAL 15 MINUTE');			
+		}
+*/
+
+		return $onlineUsers;
 	}
 	
 	/**
@@ -248,83 +255,72 @@ class ForumHolder extends Page {
 	 * Get the latest members
 	 *
 	 * @param int $limit Number of members to return
-	 * @return DataObjectSet
+	 * @return ArrayList
 	 */
 	function getLatestMembers($limit = 1) {
-		$filter = '';
+		$groupIDs = array();
 		
-		if($forumGroup = DataObject::get_one('Group', "\"Code\" = 'forum-members'")) {
-			$filter = "\"GroupID\" = '". $forumGroup->ID ."' ";
+		if($forumGroup = Group::get()->filter('Code', 'forum-members')->first()) {
+			$groupIDs[] = $forumGroup->ID;
 		}
-		if($adminGroup = DataObject::get_one('Group', "(\"Code\" = 'administrators' OR \"Code\" = 'Administrators')")) {
-			$filter .= ($filter) ? "OR \"GroupID\" = '". $adminGroup->ID ."'" : "\"GroupID\" = '". $adminGroup->ID ."'";
-		}
-		
-		// do a lookup on the specific Group_Members table for the latest member ID
-		if($filter) {
-			$limit = (int) $limit;
-
-			$query = new SQLQuery();
-			$query->select('"MemberID"')->from('"Group_Members"')->where($filter)->orderby('"ID" DESC')->limit($limit);
-
-			$latestMemberIDs = $query->execute()->column();
-
-			if($latestMemberIDs) {
-				$members = new DataObjectSet();
-				
-				foreach($latestMemberIDs as $key => $id) {
-					$members->push(DataObject::get_by_id('Member', $id));
-				}
-				
-				return $members;
-			}
+		if($adminGroup = Group::get()->filter('Code', array('administrators','Administrators'))->first()) {		
+			$groupIDs[] = $adminGroup->ID;
 		}
 		
-		return DataObject::get("Member", "", "ID DESC", "", $limit);
+		$latestMembers = Member::get()
+				->filter('GroupID', $groupIDs)
+				->leftJoin('Group_Members', 'Member.ID = Group_Members.MemberID')
+				->sort('Member.ID DESC')
+				->limit($limit);
+
+		return $latestMembers;
 	}
 
+	/**
+	 * Get a list of Forum Categories
+	 * @return DataList
+	 */
 	function getShowInCategories() {
-	 	$categories = DataObject::get("ForumCategory", "\"ForumHolderID\"={$this->ID}");	
+	 	//$categories = DataObject::get("ForumCategory", "\"ForumHolderID\"={$this->ID}");	
+	 	$forumCategories = ForumCategory::get()->filter('ForumHolderID', $this->ID);	
 		$showInCategories = $this->getField('ShowInCategories');
-		return $categories && $showInCategories;
+		return $forumCategories && $showInCategories;
 	}
 
 	/**
 	 * Get the forums. Actually its a bit more complex than that
 	 * we need to group by the Forum Categories.
 	 *
-	 * @return DataObjectSet
+	 * @return ArrayList
 	 */
 	function Forums() {
-		if(isset($_REQUEST['Category'])){
+		if(isset($_REQUEST['Category'])) {
 			$categoryText = Convert::raw2xml($_REQUEST['Category']);
 		}
 		if($this->getShowInCategories()) {
-	 		$categories = DataObject::get("ForumCategory", "\"ForumHolderID\"={$this->ID}");	
-			foreach($categories as $category) {
+	 		$forumCategories = ForumCategory::get()->filter('ForumHolderID', $this->ID);	
+			foreach($forumCategories as $category) {
 				if(!isset($_REQUEST['Category']) || $category->Title==$categoryText){
-					$category->CategoryForums = new DataObjectSet();
-					
-					$forums = DataObject::get("Forum", "\"CategoryID\" = '$category->ID' AND \"ParentID\" = '$this->ID' AND \"ShowInMenus\"=1");
-					
-					if($forums) {
+					$category->CategoryForums = new ArrayList();
+					if($forums = Forum::get()->filter(array('CategoryID' => $category->ID, 'ParentID' => $this->ID, 'ShowInMenus' => 1))) {
 						foreach($forums as $forum) {
 							if($forum->canView()) {
 								$category->CategoryForums->push($forum);
 							}
 						}
 					}
-					
-					if($category->CategoryForums->Count() < 1) $categories->remove($category);
+					if($category->CategoryForums->Count() < 1) {
+						$categories->remove($category);
+					}
 				}else{
 					$categories->remove($category);
 				}
 			}
-			
+	
 			return $categories;
 		}
 		
-		$forums = DataObject::get("Forum", "\"ParentID\" = '$this->ID' AND \"ShowInMenus\"=1");
+		$forums = Forum::get()->filter(array('ParentID' => $this->ID, 'ShowInMenus' => 1));
 
 		if($forums) {
 			foreach($forums as $forum) {
@@ -486,16 +482,16 @@ class ForumHolder_Controller extends Page_Controller {
 
 
 	public function init() {
-		Requirements::themedCSS('Forum');
+		parent::init();
+
 		Requirements::javascript(THIRDPARTY_DIR . "/jquery/jquery.js");
-		
 		Requirements::javascript("forum/javascript/jquery.MultiFile.js");
 		Requirements::javascript("forum/javascript/forum.js");
-		
+
+		Requirements::themedCSS('forum','forum','all');
+
 		RSSFeed::linkToFeed($this->Link("rss"), _t('ForumHolder.POSTSTOALLFORUMS', "Posts to all forums"));
-		
-		parent::init();
-		
+
 		// Set the back url
 		if(isset($_SERVER['REQUEST_URI'])) {
 			Session::set('BackURL', $_SERVER['REQUEST_URI']);
@@ -528,13 +524,28 @@ class ForumHolder_Controller extends Page_Controller {
 
 		switch($order) {
 			case "joined":
-				$members = DataObject::get("Member", "\"GroupID\" = '$forumGroupID'", "\"Member\".\"Created\" ASC", "LEFT JOIN \"Group_Members\" ON \"Member\".\"ID\" = \"Group_Members\".\"MemberID\"", "{$SQL_start},100");
+//				$members = DataObject::get("Member", "\"GroupID\" = '$forumGroupID'", "\"Member\".\"Created\" ASC", "LEFT JOIN \"Group_Members\" ON \"Member\".\"ID\" = \"Group_Members\".\"MemberID\"", "{$SQL_start},100");
+				$members = Member::get()
+						->filter('Member.GroupID', $forumGroupID)
+						->leftJoin('Group_Members', 'Member.ID = Group_Members.MemberID')
+						->sort('Member.Created ASC')
+						->limit($SQL_start . ',100');
 			break;
 			case "name":
-				$members = DataObject::get("Member", "\"GroupID\" = '$forumGroupID'", "\"Member\".\"Nickname\" ASC", "LEFT JOIN \"Group_Members\" ON \"Member\".\"ID\" = \"Group_Members\".\"MemberID\"", "{$SQL_start},100");
+//				$members = DataObject::get("Member", "\"GroupID\" = '$forumGroupID'", "\"Member\".\"Nickname\" ASC", "LEFT JOIN \"Group_Members\" ON \"Member\".\"ID\" = \"Group_Members\".\"MemberID\"", "{$SQL_start},100");
+				$members = Member::get()
+						->filter('Member.GroupID', $forumGroupID)
+						->leftJoin('Group_Members', 'Member.ID = Group_Members.MemberID')
+						->sort('Member.Nickname ASC')
+						->limit($SQL_start . ',100');
 			break;
 			case "country":
-				$members = DataObject::get("Member", "\"GroupID\" = '$forumGroupID' AND \"Member\".\"CountryPublic\" = TRUE", "\"Member\".\"Country\" ASC", "LEFT JOIN \"Group_Members\" ON \"Member\".\"ID\" = \"Group_Members\".\"MemberID\"", "{$SQL_start},100");
+//				$members = DataObject::get("Member", "\"GroupID\" = '$forumGroupID' AND \"Member\".\"CountryPublic\" = TRUE", "\"Member\".\"Country\" ASC", "LEFT JOIN \"Group_Members\" ON \"Member\".\"ID\" = \"Group_Members\".\"MemberID\"", "{$SQL_start},100");
+				$members = Member::get()
+						->filter(array('Member.GroupID' => $forumGroupID, 'Member.CountryPublic' => TRUE))
+						->leftJoin('Group_Members', 'Member.ID = Group_Members.MemberID')
+						->sort('Member.Nickname ASC')
+						->limit($SQL_start . ',100');
 			break;
 			case "posts": 
 				$query = singleton('Member')->extendedSQL('', "\"NumPosts\" DESC", "{$SQL_start},100");
@@ -544,7 +555,12 @@ class ForumHolder_Controller extends Page_Controller {
 				$members->parseQueryLimit($query);
 			break;
 			default:
-				$members = DataObject::get("Member", "\"GroupID\" = '$forumGroupID'", "\"Member\".\"Created\" DESC", "LEFT JOIN \"Group_Members\" ON \"Member\".\"ID\" = \"Group_Members\".\"MemberID\"", "{$SQL_start},100");
+				//$members = DataObject::get("Member", "\"GroupID\" = '$forumGroupID'", "\"Member\".\"Created\" DESC", "LEFT JOIN \"Group_Members\" ON \"Member\".\"ID\" = \"Group_Members\".\"MemberID\"", "{$SQL_start},100");
+				$members = Member::get()
+						->filter('Member.GroupID', $forumGroupID)
+						->leftJoin('Group_Members', 'Member.ID = Group_Members.MemberID')
+						->sort('Member.Created DESC')
+						->limit($SQL_start . ',100');
 			break;
 		}
 		
@@ -575,18 +591,18 @@ class ForumHolder_Controller extends Page_Controller {
 		
 		if($method == 'posts') {
 			$threadsQuery = singleton('ForumThread')->buildSQL(
-				'"SiteTree"."ParentID" = ' . $this->ID,
-				'"PostCount" DESC',
+				"\"SiteTree\".\"ParentID\" = '" . $this->ID ."'",
+				"\"PostCount\" DESC",
 				"$start,$limit",
-				'LEFT JOIN "Post" ON "Post"."ThreadID" = "ForumThread"."ID" LEFT JOIN "SiteTree" ON "SiteTree"."ID" = "ForumThread"."ForumID"'
+				"LEFT JOIN \"Post\" ON \"Post\".\"ThreadID\" = \"ForumThread\".\"ID\" LEFT JOIN \"SiteTree\" ON \"SiteTree\".\"ID\" = \"ForumThread\".\"ForumID\""
 			);
-			$threadsQuery->select[] = 'COUNT("Post"."ID") AS "PostCount"';
-			$threadsQuery->groupby[] = '"ForumThread"."ID"';
+			$threadsQuery->select[] = "COUNT(\"Post\".\"ID\") AS 'PostCount'";
+			$threadsQuery->groupby[] = "\"ForumThread\".\"ID\"";
 			$threads = singleton('ForumThread')->buildDataObjectSet($threadsQuery->execute());
 			if($threads) $threads->setPageLimits($start, $limit, $threadsQuery->unlimitedRowCount());
 			
 		} elseif($method == 'views') {
-			$threads = DataObject::get('ForumThread', '', '"NumViews" DESC', '', "$start,$limit");
+			$threads = DataObject::get('ForumThread', '', "\"NumViews\" DESC", '', "$start,$limit");
 		}
 		
 		return array(
@@ -772,9 +788,7 @@ class ForumHolder_Controller extends Page_Controller {
 			"MAX(\"PostList\".\"Created\") DESC",	
 			"INNER JOIN \"Post\" AS \"PostList\" ON \"PostList\".\"ThreadID\" = \"ForumThread\".\"ID\" 
 		  	 INNER JOIN \"" . ForumHolder::baseForumTable() . "\" \"ForumPage\" ON \"ForumThread\".\"ForumID\"=\"ForumPage\".\"ID\"");
-		*/
-		
-		
+
 		
 		//Get all the forums with global sticky threads, and then get the most recent post for each of these		
 		$threads=DataObject::get(
@@ -783,13 +797,21 @@ class ForumHolder_Controller extends Page_Controller {
 			'',
 			"INNER JOIN \"" . ForumHolder::baseForumTable() . "\" AS \"ForumPage\" ON \"ForumThread\".\"ForumID\"=\"ForumPage\".\"ID\""
 		);
-		
-		//Now go and get the most recent post for each of these forum threads
-		$trimmed = new DataObjectSet;
+		*/
+		//dump(ForumHolder::baseForumTable());
+
+		// Get all the forums with global sticky threads
+		$threads = ForumThread::get()
+				->filter('IsGlobalSticky', 1)
+//				->filter('SiteTree_Live.ParentID', $this->ID)
+//				->innerJoin('SiteTree_Live', 'ForumThread.ForumID = SiteTree_Live.ID')
+				;
+		// Now get the most recent post for each of these forum threads
+		$trimmed = new ArrayList();
 		if($threads){
 			foreach($threads as $thread){
 				if ($thread->canView()) {
-					$post = DataObject::get_one('Post', "\"Post\".\"ThreadID\"={$thread->ID}", "\"Created\" DESC");
+					$post = Post::get()->filter('ThreadID', $thread->ID)->sort('Post.Created DESC');
 					$thread->Post = $post;
 					$trimmed->Push($thread);
 				}
