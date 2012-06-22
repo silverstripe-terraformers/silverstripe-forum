@@ -6,3 +6,5 @@ Search for the forum module is going to rely on the Silverstripe Full Text Searc
 As the Full Text search module is still in development search will not work at present in the forum module the previous version of
 SilverStripe 2.4 used MyISAM as the default database engine, SilverStripe 3.0 uses InnoDB as the default MySql database engine which
 is the reason why it will have to rely on the Full Text module to be present
+
+The search functionality can still be used if you are using the MyISAM database engine. 
