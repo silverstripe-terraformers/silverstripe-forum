@@ -208,8 +208,10 @@ class Forum extends Page {
 	 * @return FieldSet The fields to be displayed in the CMS.
 	 */
 	function getCMSFields() {
-		Requirements::javascript("forum/javascript/ForumAccess.js");
 		Requirements::css("forum/css/Forum_CMS.css");
+		// TODO: need to find out what effects commenting out the line below will cause
+		// commented out because it was throwing up a error when trying to define Behaviour
+		//Requirements::javascript("forum/javascript/ForumAccess.js");
 
 	  	$fields = parent::getCMSFields();
 	
@@ -711,13 +713,12 @@ class Forum_Controller extends Page_Controller {
 			return false;			
 		}
 
-		// @todo resolve compile time error: Fatal error: Using $this when not in object context in /Users/mparkhill/Sites/silverstripe/framework/view/ViewableData.php on line 443
-		//$forumBBCodeHint = $this->renderWith('Forum_BBCodeHint');
-		$forumBBCodeHint = '[forumBBCodeHint]';
+		$forumBBCodeHint = $this->renderWith('Forum_BBCodeHint');
 
 		//$fields = new FieldSet(
 		$fields = new FieldList(
-			($post && $post->isFirstPost() || !$thread) ? new TextField("Title", _t('Forum.FORUMTHREADTITLE', 'Title')) : new ReadonlyField('Title',  _t('Forum.FORUMTHREADTITLE', 'Title'), 'Re:'. $thread->Title),
+			($post && $post->isFirstPost() || !$thread) ? new TextField("Title", _t('Forum.FORUMTHREADTITLE', 'Title')) :
+				new ReadonlyField('TitleReply',  _t('Forum.FORUMTHREADTITLE', 'Title'), 'Re:'. $thread->Title),
 			new TextareaField("Content", _t('Forum.FORUMREPLYCONTENT', 'Content')),
 			new LiteralField(
 				"BBCodeHelper", 
@@ -762,8 +763,9 @@ class Forum_Controller extends Page_Controller {
 			new FormAction("doPostMessageForm", _t('Forum.REPLYFORMPOST', 'Post'))
 		);
 
-		$required = ($addMode) ? new RequiredFields("Title", "Content") : new RequiredFields("Content");
-		
+		// $addMode is not a boolean it is being seen as a string probably to do with how entwine sends it
+		$required = ($addMode != 'true') ? new RequiredFields("Title", "Content") : new RequiredFields("Content");
+		if ($addMode != 'true') $fields->push(new HiddenField('Title', 'Title', $thread->Title));		
 		$form = new Form($this, "PostMessageForm", $fields, $actions, $required);
 
 		if($post) $form->loadDataFrom($post);

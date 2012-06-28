@@ -3,11 +3,16 @@
 	<% control ForumHolder %>
 		<div class="forum-header-forms">
 
-			<form class="forum-search" action="$Link(search)" method="get">
-				<label for="forum-search-text"><% _t('SEARCHBUTTON','Search') %></label>
-				<input id="forum-search-text" class="text" type="text" name="Search" value="$Query.ATT" />
-				<input class="submit" type="submit" value="<% _t('SEARCHBUTTON','Search') %>"/>
-			</form>
+			<span class="forum-search-dropdown-icon"></span>
+			<div class="forum-search-bar">
+				<form class="forum-search" action="$Link(search)" method="get">
+					<fieldset>
+						<label for="search-text"><% _t('SEARCHBUTTON','Search') %></label>
+						<input id="search-text" class="text active" type="text" name="Search" value="$Query.ATT" />
+						<input class="submit action" type="submit" value="<% _t('SEARCHBUTTON','L') %>"/>
+					</fieldset>	
+				</form>
+			</div>
 
 			<form class="forum-jump" action="#">
 				<label for="forum-jump-select"><% _t('JUMPTO','Jump to:') %></label>
@@ -34,19 +39,19 @@
 				</select>
 			</form>
 
-		<% if NumPosts %>
-			<p class="forumStats">
-				$NumPosts 
-				<strong><% _t('POSTS','Posts') %></strong> 
-				<% _t('IN','in') %> $NumTopics <strong><% _t('TOPICS','Topics') %></strong> 
-				<% _t('BY','by') %> $NumAuthors <strong><% _t('MEMBERS','members') %></strong>
-			</p>
-		<% end_if %>
+			<% if NumPosts %>
+				<p class="forumStats">
+					$NumPosts 
+					<strong><% _t('POSTS','Posts') %></strong> 
+					<% _t('IN','in') %> $NumTopics <strong><% _t('TOPICS','Topics') %></strong> 
+					<% _t('BY','by') %> $NumAuthors <strong><% _t('MEMBERS','members') %></strong>
+				</p>
+			<% end_if %>
 
 		</div><!-- forum-header-forms. -->
 	<% end_control %>
 
-	<h2 class="forum-heading">$HolderSubtitle</h2>
+	<h1 class="forum-heading"><a name='Header'>$HolderSubtitle</a></h1>
 	<p class="forum-breadcrumbs">$Breadcrumbs</p>
 	<p class="forum-abstract">$ForumHolder.HolderAbstract</p>
 		
