@@ -406,7 +406,12 @@ class Forum extends Page {
 		);
 */
 		$topics = DataList::create('ForumThread')->filter(array("ForumID"=>$this->ID, 'IsGlobalSticky'=>0, 'IsSticky'=>0));
-		return $topics;
+		//$request = new RequestHandler();
+		//$httpRequest = $request->getRequest();
+		//$requests = $httpRequest->getVars();
+		// need to find the proper way of finding $_GET variables
+		// TODO need to find out the proper SS3 way of getting $_GET
+		return new PaginatedList(new ArrayList($topics->toArray()), $_GET);
 	}
 	
 	/*
@@ -450,8 +455,9 @@ class Forum extends Page {
 */
 		$stickTopics = DataList::create('ForumThread')->filter(array('ForumID'=>$this->ID, 'IsSticky'=>1));
 		if($include_global) $stickTopics->filter('IsGlobalSticky', 1);
+		return new PaginatedList(new ArrayList($stickTopics->toArray()), $_GET);
 
-		return $stickTopics;
+		//return $stickTopics;
 	}
 }
 
@@ -658,10 +664,12 @@ class Forum_Controller extends Page_Controller {
 		if(!isset($_GET['start'])) $_GET['start'] = 0;
 
 		//return DataObject::get("Post", "\"ThreadID\" = '$SQL_id'", "\"Created\" $order" , "", (int)$_GET['start'] . ", $numPerPage");
-		return Post::get()
+		$posts = Post::get()
 				->filter('ThreadID', Convert::raw2sql($this->urlParams['ID']))
 				->sort('Created ' . $sortDirection)
 				->limit((int)$_GET['start'], $numPerPage);
+		// TODO need to find out the proper SS3 way of getting $_GET
+		return new PaginatedList(new ArrayList($posts->toArray()), $_GET);
 	}
 
 	/**
