@@ -40,7 +40,7 @@ class ForumMemberProfile extends Page_Controller {
 	 * Initialise the controller
 	 */
 	function init() {
-		Requirements::themedCSS('Forum');
+		Requirements::themedCSS('forum','forum','all');
 		$member = $this->Member() ? $this->Member() : null;
 		$nicknameText = ($member) ? ($member->Nickname . '\'s ') : '';
 		
