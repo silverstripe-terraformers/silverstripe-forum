@@ -121,7 +121,9 @@ class ForumRole extends DataExtension {
 	 * Run the Country code through a converter to get the proper Country Name
 	 */
 	function FullCountry() {
-		return (isset($this->owner->Country) && !is_null($this->owner->Country)) ? Geoip::countryCode2name($this->owner->Country) : "";
+		$locale = new Zend_Locale();
+		$locale->setLocale($this->owner->Country);
+		return $locale->getRegion();
 	}
 	function NumPosts() {
 		if(is_numeric($this->owner->ID)) {
