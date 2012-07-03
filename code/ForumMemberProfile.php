@@ -168,7 +168,7 @@ class ForumMemberProfile extends Page_Controller {
 		}
 
 		//$forumGroup = DataObject::get_one('Group', "\"Code\" = 'forum-members'");
-		$forumGroup = Group::get()->filter('Code', 'forum-members');
+		$forumGroup = Group::get()->filter('Code', 'forum-members')->first();
 
 		//if($member = DataObject::get_one("Member", "\"Email\" = '". Convert::raw2sql($data['Email']) . "'")) {
 		if($member = Member::get()->filter('Email', Convert::raw2sql($data['Email']))->first()) {
