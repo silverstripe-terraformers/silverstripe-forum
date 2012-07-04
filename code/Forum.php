@@ -233,31 +233,32 @@ class Forum extends Page {
 			new TreeDropdownField('UploadsFolderID', _t('Forum.UPLOADSFOLDER', 'Uploads folder'), 'Folder')
 		));
 		
-		//$config = GridFieldConfig::create();
-		//$config->addComponent(new GridFieldFilterHeader());
-		$gridField = new GridField('Category', 'Forum Category', DataObject::get("ForumCategory"));
-		
-
-		//$GridFieldConfig_RelationEditor
-		//HasManyComplexTableField->__construct is deprecated. Use GridField with GridFieldConfig_RelationEditor
-		$fields->addFieldToTab("Root.Category", $gridField);
-		/*
-		$fields->addFieldToTab("Root.Category",
-			new HasOneCTFWithDefaults(
-				$this,
-				'Category',
-				'ForumCategory',
-				array(
-					'Title' => 'Title'
-				),
-				'getCMSFields_forPopup',
-				"\"ForumHolderID\"={$this->ParentID}",
-				null,
-				null,
-				array("ForumHolderID" => $this->ParentID)
-			)
+		// add a grid field to the category tab with all the categories
+		$config = GridFieldConfig::create();
+		$config->addComponents(
+			new GridFieldButtonRow(),
+			new GridFieldDataColumns(),
+			new GridFieldEditButton(),
+			new GridFieldViewButton(),
+			new GridFieldDeleteAction(),
+			new GridFieldAddNewButton(),
+			new GridFieldPaginator(),
+			new GridFieldDetailForm()
 		);
-		*/
+
+		// need a drop down of forum categories
+		$forumCategoryObj = DataObject::get("ForumCategory",'','Title');
+		$gridField = new GridField('Category', _t('Forum.FORUMCATEGORY', 'Forum Category'), $forumCategoryObj, $config);
+
+		
+		$forumCategories = array();
+		foreach ($forumCategoryObj as $category) {
+			$forumCategories[$category->ID] = $category->Title;	
+		}
+
+		$categoryOptions = new DropdownField('CategoryID', _t('Forum.FORUMCATEGORY', 'Forum Category'), $forumCategories);
+
+		$fields->addFieldsToTab("Root.Category", array($categoryOptions, $gridField));
 
 		// TagField comes in it's own module.
 		// If it's installed, use it to select moderators for this forum
