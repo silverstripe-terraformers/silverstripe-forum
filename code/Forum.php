@@ -236,12 +236,13 @@ class Forum extends Page {
 		// add a grid field to the category tab with all the categories
 		$config = GridFieldConfig::create();
 		$config->addComponents(
+			new GridFieldSortableHeader(),
 			new GridFieldButtonRow(),
 			new GridFieldDataColumns(),
 			new GridFieldEditButton(),
 			new GridFieldViewButton(),
 			new GridFieldDeleteAction(),
-			new GridFieldAddNewButton(),
+			new GridFieldAddNewButton('buttons-before-left'),
 			new GridFieldPaginator(),
 			new GridFieldDetailForm()
 		);
