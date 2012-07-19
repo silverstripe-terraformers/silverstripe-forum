@@ -727,8 +727,7 @@ class Forum_Controller extends Page_Controller {
 
 		//$fields = new FieldSet(
 		$fields = new FieldList(
-			($post && $post->isFirstPost() || !$thread) ? new TextField("Title", _t('Forum.FORUMTHREADTITLE', 'Title')) :
-				new ReadonlyField('TitleReply',  _t('Forum.FORUMTHREADTITLE', 'Title'), 'Re:'. $thread->Title),
+			($post && $post->isFirstPost() || !$thread) ? new TextField("Title", _t('Forum.FORUMTHREADTITLE', 'Title')) : new ReadonlyField('Title',  _t('Forum.FORUMTHREADTITLE', ''), 'Re:'. $thread->Title),
 			new TextareaField("Content", _t('Forum.FORUMREPLYCONTENT', 'Content')),
 			new LiteralField(
 				"BBCodeHelper", 
