@@ -7,7 +7,6 @@
  *
  * @package forum
  */
-//class ForumRole extends DataObjectDecorator {
 class ForumRole extends DataExtension {
 
 	/**

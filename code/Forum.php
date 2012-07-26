@@ -354,7 +354,7 @@ class Forum extends Page {
 	 * @return Post
 	 */
 	function getLatestPost() {
-		return DataList::create('Post')->filter('ForumID', $this->ID)->sort('Post.ID DESC')->first();
+		return Post::get()->filter('ForumID', $this->ID)->sort('Post.ID DESC')->first();
 	}
 
 	/**
@@ -381,7 +381,7 @@ class Forum extends Page {
 	 * @return int
 	 */
 	function getNumAuthors() {
-		return Post::getDistinct('AuthorID')->filter('ForumID', $this->ID)->count();
+		return Post::get()->getDistinct('AuthorID')->filter('ForumID', $this->ID)->count();
 	}
 
 	/**
@@ -668,8 +668,7 @@ class Forum_Controller extends Page_Controller {
 		//return DataObject::get("Post", "\"ThreadID\" = '$SQL_id'", "\"Created\" $order" , "", (int)$_GET['start'] . ", $numPerPage");
 		$posts = Post::get()
 				->filter('ThreadID', Convert::raw2sql($this->urlParams['ID']))
-				->sort('Created ' . $sortDirection)
-				->limit((int)$_GET['start'], $numPerPage);
+				->sort('Created ' . $sortDirection);
 		// TODO need to find out the proper SS3 way of getting $_GET
 		return new PaginatedList(new ArrayList($posts->toArray()), $_GET);
 	}

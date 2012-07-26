@@ -302,7 +302,10 @@ class ForumHolder extends Page {
 			foreach($forumCategories as $category) {
 				if(!isset($_REQUEST['Category']) || $category->Title==$categoryText){
 					$category->CategoryForums = new ArrayList();
-					if($forums = Forum::get()->filter(array('CategoryID' => $category->ID, 'ParentID' => $this->ID, 'ShowInMenus' => 1))) {
+
+					$forums = Forum::get()->filter(array('CategoryID' => $category->ID, 'ParentID' => $this->ID, 'ShowInMenus' => 1));
+
+					if($forums->Count() > 0 ) {
 						foreach($forums as $forum) {
 							if($forum->canView()) {
 								$category->CategoryForums->push($forum);
@@ -310,21 +313,22 @@ class ForumHolder extends Page {
 						}
 					}
 					if($category->CategoryForums->Count() < 1) {
-						$categories->remove($category);
+						$forumCategories->remove($category);
 					}
 				}else{
-					$categories->remove($category);
+					$forumCategories->remove($category);
 				}
 			}
-	
-			return $categories;
+			return $forumCategories;
 		}
 		
 		$forums = Forum::get()->filter(array('ParentID' => $this->ID, 'ShowInMenus' => 1));
 
-		if($forums) {
+		if($forums->Count() > 0) {
 			foreach($forums as $forum) {
-				if(!$forum->canView()) $forums->remove($forum);
+				if(!$forum->canView()) {
+					$forums->remove($forum);
+				}
 			}
 		}
 		
@@ -399,15 +403,24 @@ class ForumHolder extends Page {
 
 		// limit to just this forum install
 		$filter[] = "\"ForumPage\".\"ParentID\"='{$this->ID}'";
+
+		$posts = Post::get()
+			->leftJoin('ForumThread', 'Post.ThreadID = ForumThread.ID')
+			->leftJoin(ForumHolder::baseForumTable(), 'ForumPage.ID = ForumThread.ForumID', 'ForumPage')
+			->limit($limit)
+			->sort('Post.ID', 'DESC');
+		foreach ($filter as $value) {
+			$posts->where($value);
+		}
 		
-		return DataObject::get(
-			"Post",
-			implode(" AND ", $filter),
-			"\"Post\".\"ID\" DESC",
-			"LEFT JOIN \"ForumThread\" on \"Post\".\"ThreadID\" = \"ForumThread\".\"ID\" 
-			 LEFT JOIN \"" . ForumHolder::baseForumTable() . "\" AS \"ForumPage\" ON \"ForumThread\".\"ForumID\" = \"ForumPage\".\"ID\"",
-			$limit
-		);
+		$recentPosts = new ArrayList();
+		foreach ($posts as $post) {
+			$recentPosts->Push($post);
+		}
+		if (count($recentPosts) > 0 ) {
+			return $recentPosts;
+		}
+		return null;
 	}
 
 

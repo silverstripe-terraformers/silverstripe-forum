@@ -166,7 +166,6 @@ class Post extends DataObject {
 	 * @return bool
 	 */
 	function isFirstPost() {
-//		return (DB::query("SELECT COUNT(\"ID\") FROM \"Post\" WHERE \"ThreadID\" = '$this->ThreadID' AND \"ID\" < '$this->ID'")->value() > 0) ? false : true;
 		return (DB::query('SELECT COUNT("ID") FROM "Post" WHERE "ThreadID" = ' . $this->ThreadID . ' AND "ID" < ' . $this->ID)->value() > 0) ? false : true;
 	}
 	
@@ -177,7 +176,7 @@ class Post extends DataObject {
 	 */
 	function EditLink() {	
 		if($this->canEdit()) {
-			$url = $this->Link('editpost') . '/' . $this->ID;
+			$url = Controller::join_links($this->Link('editpost'), $this->ID);
 
 			return '<a href="' . $url . '" class="editPostLink">' . _t('Post.EDIT','Edit') . '</a>';
 		}
